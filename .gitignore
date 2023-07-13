@@ -1,0 +1,7 @@
+r*
+mishap
+.vscode
+error_log
+legacy
+config.json
+*.code-workspace
