@@ -1,5 +1,6 @@
 import discord
 import os
+import json
 
 intent = discord.Intents.all()
 client = discord.Client(intents=intent)
@@ -17,4 +18,8 @@ async def on_message(message: discord.Message):
         await message.channel.send('Hello!')
 
 # client.run(os.getenv('TOKEN'))
-client.run("MTAxODg1MTUyMjgwMjYyNjYwMQ.GIuyEu.F9ecsAzt_6Ntcrk4KB_0YWkP1ORSEZK0d96ugg")
+with open("config.json") as f:
+    stuff = json.load(f)
+    token = stuff["discord-token"]
+
+client.run(token)
