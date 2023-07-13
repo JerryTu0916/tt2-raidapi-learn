@@ -1,0 +1,10 @@
+{
+  "auth_token": null,
+  "auth_token_backup": null,
+  "player_tokens": [],
+  "authorized_clan": [],
+  "db_username": null,
+  "db_password": null,
+  "db_host": null,
+  "db_name": null
+}
