@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from tap_titans.providers.providers import *
 
 
-with open("raid_config.json", mode="rt") as f:
+with open("config.json", mode="rt") as f:
     config = json.load(f)
 AUTH_TOKEN = config["auth_token"]
 PLAYER_TOKENS = config["player_tokens"]
