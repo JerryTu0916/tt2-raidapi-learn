@@ -1,8 +1,21 @@
+# raid logs / attack logs
 r[0-9][0-9][0-9][0-9][0-9][0-9][0-9]
 r[0-9][0-9][0-9][0-9][0-9][0-9][0-9]logs
+
+# archives
+*.7z
+*.zip
+
+# legacy file/folders
 mishap
-.vscode
-error_log
 legacy
+
+# error logs
+error_log
+
+# user credentials/config
 config.json
+
+# vscode
+.vscode
 *.code-workspace
