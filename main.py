@@ -9,7 +9,11 @@ from sqlalchemy import create_engine
 
 from tap_titans.providers.providers import *
 
+# global variables
+raid_start_time_dict = dict()
+morale_boost_dict = dict()
 
+# user credentials
 with open("config.json", mode="rt") as f:
     config = json.load(f)
 AUTH_TOKEN = config["auth_token"]
@@ -18,8 +22,7 @@ authorized_clan = config["authorized_clan"]
 my_conn = create_engine(f"mysql+mysqldb://{config['db_username']}:{config['db_password']}@{config['db_host']}/{config['db_name']}")
 
 
-raid_start_time_dict = dict()
-
+# calculate the cycle number based on two string in the form of "1970-01-01T00:00:00Z"
 def cycle_calc(raid_start_time_string:str, attack_datetime_string:str) -> int:
     attack_datetime = datetime.datetime(int(attack_datetime_string[0:4]), int(attack_datetime_string[5:7]), int(
         attack_datetime_string[8:10]), int(attack_datetime_string[11:13]), int(attack_datetime_string[14:16]), int(attack_datetime_string[17:19]))
@@ -29,6 +32,9 @@ def cycle_calc(raid_start_time_string:str, attack_datetime_string:str) -> int:
     cycle = max(dt.days * 2 + ceil(dt.seconds/(86400/2)), 1)
     return cycle
 
+# TODO: move this massive function to a different file
+# Flatten and calculate the received attack log into a more useable form,
+# for the purpose of storing them into a database or perform additional analysis on them
 def return_new_attack_dict(input_dict:dict, raid_start_time_string:str=None)->dict:
     '''raid start time is used to calc the cycle number, as it's not present on the input_dict'''
     keys = ["raid_id", "time", "clan_code", "cycle_number", "total_damage", "player_name", "player_code", "titan1_index", "titan1_BodyHead", "titan1_ArmorHead", "titan1_SkeletonHead", "titan1_BodyChestUpper", "titan1_ArmorChestUpper", "titan1_SkeletonChestUpper", "titan1_BodyArmUpperRight", "titan1_ArmorArmUpperRight", "titan1_SkeletonArmUpperRight", "titan1_BodyArmUpperLeft", "titan1_ArmorArmUpperLeft", "titan1_SkeletonArmUpperLeft", "titan1_BodyLegUpperRight", "titan1_ArmorLegUpperRight", "titan1_SkeletonLegUpperRight", "titan1_BodyLegUpperLeft", "titan1_ArmorLegUpperLeft", "titan1_SkeletonLegUpperLeft", "titan1_BodyHandRight", "titan1_ArmorHandRight", "titan1_SkeletonHandRight", "titan1_BodyHandLeft", "titan1_ArmorHandLeft", "titan1_SkeletonHandLeft", "titan1_total", "titan2_index", "titan2_BodyHead", "titan2_ArmorHead", "titan2_SkeletonHead", "titan2_BodyChestUpper", "titan2_ArmorChestUpper", "titan2_SkeletonChestUpper", "titan2_BodyArmUpperRight", "titan2_ArmorArmUpperRight", "titan2_SkeletonArmUpperRight", "titan2_BodyArmUpperLeft",
@@ -115,19 +121,29 @@ async def generic_log_storage(anything=None)->None:
         json.dump(anything, out_file, indent=2)
         out_file.close()
 
+# add an entry to the global raid_start_dict: dict(raid_id:int, timestamp:str)
 def add_to_raid_start_dict(raid_id:int, timestamp:str)->None:
     global raid_start_time_dict
     raid_start_time_dict[raid_id] = timestamp
     print(raid_start_time_dict)
 
+def add_to_morale_boost_dict(raid_id:int, morale_boost:float):
+    global morale_boost_dict
+    morale_boost_dict[raid_id] = morale_boost
+    print(morale_boost_dict)
 
+# primary purpose is to update the global raid_start_dict, and store the received .json file on disk
+# also holds morale usage info on a raid
 async def pre_raid_start_log(raid_start_log:dict)->None:
     if raid_start_log["clan_code"] not in authorized_clan:
         print("no")
         return
     add_to_raid_start_dict(raid_id=raid_start_log["raid_id"], timestamp=raid_start_log["start_at"])
+    add_to_morale_boost_dict(raid_id=raid_start_log["raid_id"], morale_boost=raid_start_log["morale"]["bonus"]["BonusAmount"])
     await generic_log_storage(raid_start_log)
 
+# TODO: merge these two functions
+# ...actually no, since pre_raid_start_log has infos that mid_raid_start_log doesn't have
 async def mid_raid_start_log(raid_start_log:dict)->None:
     if raid_start_log["clan_code"] not in authorized_clan:
         print("no")
@@ -137,7 +153,7 @@ async def mid_raid_start_log(raid_start_log:dict)->None:
 
 
 # toss a bunch of files into the r{raid_id} folder
-def store_data(json_data:dict)->None:
+def store_attack_data(json_data:dict)->None:
     dir_path = f"./r{json_data['raid_id']}"
     if not os.path.isdir(dir_path):
         os.mkdir(dir_path)
@@ -146,19 +162,19 @@ def store_data(json_data:dict)->None:
     json.dump(json_data, out_file, indent=2)
     out_file.close()
 
-
+#db operations on raid attacks
 def db_stuff(json_data:dict)->None:
     global raid_start_time_dict
     new_attack_dict = return_new_attack_dict(json_data,raid_start_time_dict[json_data["raid_id"]])
     df = pd.DataFrame([new_attack_dict])
     df.to_sql(con=my_conn, name=f"r{json_data['raid_id']}", if_exists="append")
 
-# Define the event handler function to process received data
 
+# Define the event handler function to process received data
 async def handle_attack_data(data:dict)->None:
     # print(data)  # Optional: Print the received data for debugging
     # Call the store_data function to store the received data
-    store_data(data)
+    store_attack_data(data)
     # all the db operations happens here
     db_stuff(data)
 
@@ -180,6 +196,7 @@ async def connected(anything=None)->None:
     else:
         print("Subscribed to clan:", resp.ok[0].clan_code)
 
+# generic error log storage
 async def err(anything:dict=None)->None:
     if anything != None:
         dir_path = "./error_log"
@@ -189,6 +206,46 @@ async def err(anything:dict=None)->None:
         out_file = open(f"{dir_path}/{(counter+1):04}.json", "w")
         json.dump(anything, out_file, indent=2)
         out_file.close()
+
+def return_new_cycle_reset_dict(c_reset:dict):
+    next_cycle_datetime_str = c_reset["next_reset_at"]
+    raid_start_time_str = c_reset["raid_started_at"]
+
+    # Warning: this only works due to my implementation of the `cycle_number` function
+    # May or may not be subject to off by 1 error!
+    cycle_number = cycle_calc(raid_start_time_str, next_cycle_datetime_str)
+    
+    return_dict = dict()
+    return_dict["clan_code"] = c_reset["clan_code"]
+    return_dict["raid_id"] = c_reset["raid_id"]
+    return_dict["cycle_number"] = cycle_number
+    
+    return_dict["MirrorForceBoost"] = 0
+    # due to the morale usage being unclear without receiving the event `clan_added_raid_start`
+    # (pre_raid_start_log), morale boost is kinda iffy
+    return_dict["TeamTacticsClanMoraleBoost"] = 0
+
+    for i in c_reset["card_bonuses"]:
+        return_dict[i["id"]] = i["value"]
+    
+    global morale_boost_dict
+    if c_reset["raid_id"] in morale_boost_dict.keys():
+        return_dict["TeamTacticsClanMoraleBoost"] += morale_boost_dict[c_reset["raid_id"]]
+    else:
+        # if missed the pre_raid_start_log event, assume no morale is used and clan is in MT
+        return_dict["TeamTacticsClanMoraleBoost"] += 0.25
+    return return_dict
+
+def raid_mf_morale_db(new_cycle_reset:dict)->None:
+    df = pd.DataFrame([new_cycle_reset])
+    df.to_sql(con=my_conn, name="mf_morale", if_exists="append")
+
+# db operations: morale and mirror force bonus
+async def cycle_reset(c_reset:dict):
+    new_cycle_reset_dict = return_new_cycle_reset_dict(c_reset)
+    raid_mf_morale_db(new_cycle_reset_dict)
+    generic_log_storage(c_reset)
+
 
 wsc = WebsocketClient(
     connected=connected,
@@ -201,7 +258,7 @@ wsc = WebsocketClient(
     clan_added_raid_start=pre_raid_start_log,
     raid_end=generic_log_storage,
     raid_retire=generic_log_storage,
-    raid_cycle_reset=generic_log_storage,
+    raid_cycle_reset=cycle_reset,
     clan_added_cycle=mid_raid_start_log,
     raid_target_changed=generic_log_storage,
     setting_validate_arguments=False,
