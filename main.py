@@ -55,7 +55,10 @@ def return_new_attack_dict(input_dict:dict, raid_start_time_string:str=None)->di
 
     # edge case: titan kill
     damage_logs = input_dict["attack_log"]["cards_damage"]
-    ret_dict["titan1_index"] = damage_logs[0]["titan_index"]
+    if len(damage_logs) > 0:
+        ret_dict["titan1_index"] = damage_logs[0]["titan_index"]
+    else:
+        ret_dict["titan1_index"] = -1
     ret_dict["titan2_index"] = -1
 
     for i in damage_logs:
