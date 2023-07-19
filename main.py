@@ -247,7 +247,7 @@ def raid_mf_morale_db(new_cycle_reset:dict)->None:
 async def cycle_reset(c_reset:dict):
     new_cycle_reset_dict = return_new_cycle_reset_dict(c_reset)
     raid_mf_morale_db(new_cycle_reset_dict)
-    generic_log_storage(c_reset)
+    await generic_log_storage(c_reset)
 
 
 wsc = WebsocketClient(
